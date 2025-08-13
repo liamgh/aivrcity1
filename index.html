@@ -1,37 +1,237 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>A-Frame Busy Cityscape</title>
-  <meta name="description" content="A busy, navigable city scene using A-Frame with traffic lights and better cars.">
+  <title>A-Frame Animated Cityscape with Advanced Traffic Logic</title>
+  <meta name="description" content="A busy, navigable city scene with cars that queue and obey traffic lights.">
   <!-- A-Frame Library -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <!-- A-Frame Extras for Controls -->
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+
+  <!-- ** JAVASCRIPT FOR WORLD CONTROL ** -->
+  <script>
+    AFRAME.registerComponent('world-controller', {
+      init: function () {
+        // --- CONFIGURATION ---
+        this.lightTimings = {
+          redAmberDuration: 2000,
+          greenDuration: 8000,
+          amberDuration: 3000,
+        };
+
+        this.stopLines = {
+            northBound: -5.5, southBound: 5.5,
+            eastBound: -5.5, westBound: 5.5
+        };
+        
+        this.carSafeDistance = 6; 
+
+        // --- STATE ---
+        this.state = 'EW_GREEN';
+        this.timeInState = 0;
+
+        // --- ELEMENT REFERENCES ---
+        this.lights = {
+          north: { red: document.querySelector('#light-n-red'), amber: document.querySelector('#light-n-amber'), green: document.querySelector('#light-n-green') },
+          south: { red: document.querySelector('#light-s-red'), amber: document.querySelector('#light-s-amber'), green: document.querySelector('#light-s-green') },
+          east: { red: document.querySelector('#light-e-red'), amber: document.querySelector('#light-e-amber'), green: document.querySelector('#light-e-green') },
+          west: { red: document.querySelector('#light-w-red'), amber: document.querySelector('#light-w-amber'), green: document.querySelector('#light-w-green') },
+        };
+        
+        this.lanes = {
+          northbound: [document.querySelector('#car-n1'), document.querySelector('#car-n2')],
+          southbound: [document.querySelector('#car-s1'), document.querySelector('#car-s2')],
+          eastbound: [document.querySelector('#car-e1'), document.querySelector('#car-e2')],
+          westbound: [document.querySelector('#car-w1'), document.querySelector('#car-w2')],
+        };
+        
+        this.pedestrians = [
+            document.querySelector('#ped-1'),
+            document.querySelector('#ped-2'),
+            document.querySelector('#crossing-ped'),
+        ];
+        
+        this.player = document.querySelector('#player');
+
+        this.setLightState = (light, red, amber, green) => {
+          light.red.setAttribute('material', 'color', red ? 'red' : '#400000');
+          light.red.setAttribute('material', 'emissive', red ? 'red' : '#400000');
+          light.amber.setAttribute('material', 'color', amber ? 'orange' : '#452A00');
+          light.amber.setAttribute('material', 'emissive', amber ? 'orange' : '#452A00');
+          light.green.setAttribute('material', 'color', green ? 'lime' : '#004000');
+          light.green.setAttribute('material', 'emissive', green ? 'lime' : '#004000');
+        };
+
+        // --- INITIAL SETUP ---
+        this.setLightState(this.lights.north, true, false, false);
+        this.setLightState(this.lights.south, true, false, false);
+        this.setLightState(this.lights.east, false, false, true);
+        this.setLightState(this.lights.west, false, false, true);
+        
+        Object.values(this.lanes).forEach(lane => lane.forEach(car => {
+            if (car && car.components.animation) {
+                car.play();
+            }
+        }));
+      },
+
+      tick: function (time, timeDelta) {
+        this.timeInState += timeDelta;
+
+        // --- State Machine for Light Sequencing ---
+        switch (this.state) {
+          case 'EW_GREEN':
+            if (this.timeInState > this.lightTimings.greenDuration) {
+              this.state = 'EW_AMBER'; this.timeInState = 0;
+              this.setLightState(this.lights.east, false, true, false);
+              this.setLightState(this.lights.west, false, true, false);
+            }
+            break;
+          case 'EW_AMBER':
+            if (this.timeInState > this.lightTimings.amberDuration) {
+              this.state = 'NS_RED_AMBER'; this.timeInState = 0;
+              this.setLightState(this.lights.east, true, false, false);
+              this.setLightState(this.lights.west, true, false, false);
+              this.setLightState(this.lights.north, true, true, false);
+              this.setLightState(this.lights.south, true, true, false);
+            }
+            break;
+          case 'NS_RED_AMBER':
+            if (this.timeInState > this.lightTimings.redAmberDuration) {
+              this.state = 'NS_GREEN'; this.timeInState = 0;
+              this.setLightState(this.lights.north, false, false, true);
+              this.setLightState(this.lights.south, false, false, true);
+              Object.values(this.lanes).flat().forEach(car => {
+                  if (car && car.components.animation) car.play();
+              });
+            }
+            break;
+          case 'NS_GREEN':
+            if (this.timeInState > this.lightTimings.greenDuration) {
+              this.state = 'NS_AMBER'; this.timeInState = 0;
+              this.setLightState(this.lights.north, false, true, false);
+              this.setLightState(this.lights.south, false, true, false);
+            }
+            break;
+          case 'NS_AMBER':
+            if (this.timeInState > this.lightTimings.amberDuration) {
+              this.state = 'EW_RED_AMBER'; this.timeInState = 0;
+              this.setLightState(this.lights.north, true, false, false);
+              this.setLightState(this.lights.south, true, false, false);
+              this.setLightState(this.lights.east, true, true, false);
+              this.setLightState(this.lights.west, true, true, false);
+            }
+            break;
+          case 'EW_RED_AMBER':
+            if (this.timeInState > this.lightTimings.redAmberDuration) {
+              this.state = 'EW_GREEN'; this.timeInState = 0;
+              this.setLightState(this.lights.east, false, false, true);
+              this.setLightState(this.lights.west, false, false, true);
+              Object.values(this.lanes).flat().forEach(car => {
+                  if (car && car.components.animation) car.play();
+              });
+            }
+            break;
+        }
+
+        // --- Car & Pedestrian Interaction Logic ---
+        const isNorthSouthGreen = this.state === 'NS_GREEN';
+        const isEastWestGreen = this.state === 'EW_GREEN';
+        const allCars = Object.values(this.lanes).flat();
+
+        allCars.forEach(car => {
+            if (!car) return;
+            const raycaster = car.components.raycaster;
+            const intersectedEls = raycaster.intersectedEls;
+            
+            if (intersectedEls.length > 0) {
+                car.pause();
+                return;
+            }
+            
+            if (this.lanes.northbound.includes(car)) {
+                if (!isNorthSouthGreen) this.checkAndStop(car, this.lanes.northbound, 'z', 'northBound', 'greater');
+                else car.play();
+            } else if (this.lanes.southbound.includes(car)) {
+                if (!isNorthSouthGreen) this.checkAndStop(car, this.lanes.southbound, 'z', 'southBound', 'less');
+                else car.play();
+            } else if (this.lanes.eastbound.includes(car)) {
+                if (!isEastWestGreen) this.checkAndStop(car, this.lanes.eastbound, 'x', 'eastBound', 'greater');
+                else car.play();
+            } else if (this.lanes.westbound.includes(car)) {
+                if (!isEastWestGreen) this.checkAndStop(car, this.lanes.westbound, 'x', 'westBound', 'less');
+                else car.play();
+            }
+        });
+
+        // --- Pedestrian AI Logic ---
+        this.pedestrians.forEach(ped => {
+            if (!ped) return;
+            const raycaster = ped.components.raycaster;
+            if (raycaster && raycaster.intersectedEls.length > 0) {
+                ped.pause();
+            } else if (ped.components.animation) {
+                ped.play();
+            }
+
+            // Special logic for the road crosser
+            if (ped.id === 'crossing-ped' && !ped.isCrossing && raycaster && raycaster.intersectedEls.length === 0) {
+                ped.isCrossing = true;
+                ped.emit('startcrossing');
+            }
+        });
+      },
+      
+      checkAndStop: function(car, lane, axis, stopLine, comparison) {
+        const carPos = car.object3D.position[axis];
+        const stopPos = this.stopLines[stopLine];
+        const carIndex = lane.indexOf(car);
+        
+        let shouldStop = false;
+        
+        if (comparison === 'greater' ? carPos > stopPos - 1 && carPos < stopPos + 1 : carPos < stopPos + 1 && carPos > stopPos - 1) {
+            shouldStop = true;
+        }
+        
+        if (carIndex > 0) {
+            const carInFront = lane[carIndex - 1];
+            // ** FIX: Check the animation component's isPlaying property **
+            if (carInFront && carInFront.components.animation && !carInFront.components.animation.isPlaying) {
+                const carInFrontPos = carInFront.object3D.position[axis];
+                if (comparison === 'greater' ? carPos > carInFrontPos - this.carSafeDistance : carPos < carInFrontPos + this.carSafeDistance) {
+                    shouldStop = true;
+                }
+            }
+        }
+        
+        if (shouldStop) car.pause();
+        else car.play();
+      }
+    });
+  </script>
 </head>
 <body>
-  <a-scene background="color: #87CEEB" fog="type: linear; color: #87CEEB; near: 50; far: 150;">
+  <a-scene background="color: #87CEEB" fog="type: linear; color: #87CEEB; near: 50; far: 150;" world-controller>
 
     <!-- LIGHTING -->
     <a-light type="ambient" color="#888"></a-light>
     <a-light type="directional" intensity="0.8" position="-5 10 2" castShadow="true"></a-light>
 
-    <!-- GROUND & ROADS -->
+    <!-- GROUND, ROADS, PAVEMENTS -->
     <a-plane position="0 0 0" rotation="-90 0 0" width="100" height="100" color="#7CB342" shadow="receive: true"></a-plane>
     <a-plane position="0 0.01 0" rotation="-90 0 0" width="10" height="100" color="#424242"><a-plane position="0 0.01 0" width="0.2" height="100" color="#E0E0E0"></a-plane></a-plane>
     <a-plane position="0 0.01 0" rotation="-90 0 0" width="100" height="10" color="#424242"><a-plane position="0 0.01 0" rotation="0 90 0" width="0.2" height="100" color="#E0E0E0"></a-plane></a-plane>
-
-    <!-- PAVEMENTS -->
     <a-box position="-7.5 0.1 0" width="5" height="0.2" depth="100" color="#BDBDBD" shadow="receive: true"></a-box>
     <a-box position="7.5 0.1 0" width="5" height="0.2" depth="100" color="#BDBDBD" shadow="receive: true"></a-box>
     <a-box position="0 0.1 -7.5" width="100" height="0.2" depth="5" color="#BDBDBD" shadow="receive: true"></a-box>
     <a-box position="0 0.1 7.5" width="100" height="0.2" depth="5" color="#BDBDBD" shadow="receive: true"></a-box>
 
-    <!-- TRAFFIC LIGHTS AT CENTRAL CROSSROADS -->
+    <!-- TRAFFIC LIGHTS -->
     <a-entity id="traffic-lights">
-        <a-entity position="5.5 0.2 -5.5" rotation="0 180 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere color="red" radius="0.15" position="0 3.9 0.5" material="emissive: red; emissiveIntensity: 2"></a-sphere><a-sphere color="#424242" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere color="#424242" radius="0.15" position="0 3.1 0.5"></a-sphere></a-entity>
-        <a-entity position="-5.5 0.2 5.5" rotation="0 0 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere color="red" radius="0.15" position="0 3.9 0.5" material="emissive: red; emissiveIntensity: 2"></a-sphere><a-sphere color="#424242" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere color="#424242" radius="0.15" position="0 3.1 0.5"></a-sphere></a-entity>
-        <a-entity position="-5.5 0.2 -5.5" rotation="0 90 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere color="#424242" radius="0.15" position="0 3.9 0.5"></a-sphere><a-sphere color="#424242" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere color="green" radius="0.15" position="0 3.1 0.5" material="emissive: green; emissiveIntensity: 2"></a-sphere></a-entity>
-        <a-entity position="5.5 0.2 5.5" rotation="0 -90 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere color="#424242" radius="0.15" position="0 3.9 0.5"></a-sphere><a-sphere color="#424242" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere color="green" radius="0.15" position="0 3.1 0.5" material="emissive: green; emissiveIntensity: 2"></a-sphere></a-entity>
+        <a-entity id="light-n" position="5.5 0.2 -5.5" rotation="0 180 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere id="light-n-red" radius="0.15" position="0 3.9 0.5"></a-sphere><a-sphere id="light-n-amber" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere id="light-n-green" radius="0.15" position="0 3.1 0.5"></a-sphere></a-entity>
+        <a-entity id="light-s" position="-5.5 0.2 5.5" rotation="0 0 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere id="light-s-red" radius="0.15" position="0 3.9 0.5"></a-sphere><a-sphere id="light-s-amber" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere id="light-s-green" radius="0.15" position="0 3.1 0.5"></a-sphere></a-entity>
+        <a-entity id="light-w" position="-5.5 0.2 -5.5" rotation="0 90 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere id="light-w-red" radius="0.15" position="0 3.9 0.5"></a-sphere><a-sphere id="light-w-amber" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere id="light-w-green" radius="0.15" position="0 3.1 0.5"></a-sphere></a-entity>
+        <a-entity id="light-e" position="5.5 0.2 5.5" rotation="0 -90 0"><a-cylinder color="#212121" radius="0.1" height="4" position="0 2 0"></a-cylinder><a-box color="#212121" width="0.6" height="1.2" depth="0.4" position="0 3.5 0.3"></a-box><a-sphere id="light-e-red" radius="0.15" position="0 3.9 0.5"></a-sphere><a-sphere id="light-e-amber" radius="0.15" position="0 3.5 0.5"></a-sphere><a-sphere id="light-e-green" radius="0.15" position="0 3.1 0.5"></a-sphere></a-entity>
     </a-entity>
 
     <!-- BUILDINGS -->
@@ -40,30 +240,80 @@
         <a-entity position="15 7.5 -20"><a-box width="12" height="15" depth="8" color="#A1887F" shadow="cast: true;"></a-box><a-box class="win" position="-3 4 -4.01" width="1.5" height="2" depth="0.1" color="#263238"></a-box><a-box class="win" position="0 4 -4.01" width="1.5" height="2" depth="0.1" color="#263238"></a-box><a-box class="win" position="3 4 -4.01" width="1.5" height="2" depth="0.1" color="#263238"></a-box><a-box class="win" position="-3 0 -4.01" width="1.5" height="2" depth="0.1" color="#263238"></a-box><a-box class="win" position="0 0 -4.01" width="1.5" height="2" depth="0.1" color="#263238"></a-box><a-box class="win" position="3 0 -4.01" width="1.5" height="2" depth="0.1" color="#263238"></a-box></a-entity>
         <a-entity position="-18 5 15"><a-box width="15" height="10" depth="15" color="#CFD8DC" shadow="cast: true;"></a-box><a-box class="win" position="7.51 2 0" rotation="0 90 0" width="10" height="1.5" depth="0.1" color="#37474F"></a-box><a-box class="win" position="7.51 -2 0" rotation="0 90 0" width="10" height="1.5" depth="0.1" color="#37474F"></a-box></a-entity>
         <a-entity position="20 15 25"><a-box width="10" height="30" depth="10" color="#607D8B" shadow="cast: true;"></a-box><a-box class="win" position="0 0 -5.01" width="4" height="28" depth="0.1" color="#37474F"></a-box></a-entity>
-        <a-entity position="20 4 -5"><a-box width="8" height="8" depth="12" color="#5D4037" shadow="cast: true;"></a-box><a-box class="win" position="-2 2 -6.01" width="1.5" height="1.5" depth="0.1" color="#212121"></a-box><a-box class="win" position="2 2 -6.01" width="1.5" height="1.5" depth="0.1" color="#212121"></a-box></a-entity>
+        <a-entity position="20 4 -15"><a-box width="8" height="8" depth="12" color="#5D4037" shadow="cast: true;"></a-box><a-box class="win" position="-2 2 -6.01" width="1.5" height="1.5" depth="0.1" color="#212121"></a-box><a-box class="win" position="2 2 -6.01" width="1.5" height="1.5" depth="0.1" color="#212121"></a-box></a-entity>
         <a-entity position="-25 12.5 20"><a-box width="8" height="25" depth="8" color="#9E9E9E" shadow="cast: true;"></a-box><a-box class="win" position="4.01 10 0" rotation="0 90 0" width="4" height="2" depth="0.1" color="#424242"></a-box><a-box class="win" position="4.01 5 0" rotation="0 90 0" width="4" height="2" depth="0.1" color="#424242"></a-box><a-box class="win" position="4.01 0 0" rotation="0 90 0" width="4" height="2" depth="0.1" color="#424242"></a-box><a-box class="win" position="4.01 -5 0" rotation="0 90 0" width="4" height="2" depth="0.1" color="#424242"></a-box></a-entity>
         <a-entity position="30 8 -15"><a-box width="15" height="16" depth="10" color="#78909C" shadow="cast: true;"></a-box><a-box class="win" position="0 4 5.01" width="13" height="1.5" depth="0.1" color="#263238"></a-box><a-box class="win" position="0 0 5.01" width="13" height="1.5" depth="0.1" color="#263238"></a-box><a-box class="win" position="0 -4 5.01" width="13" height="1.5" depth="0.1" color="#263238"></a-box></a-entity>
-        <a-entity position="-30 20 0"><a-box width="10" height="40" depth="10" color="#BCAAA4" shadow="cast: true;"></a-box><a-box class="win" position="5.01 0 0" rotation="0 90 0" width="8" height="38" depth="0.1" color="#4E342E"></a-box></a-entity>
+        <a-entity position="-30 20 15"><a-box width="10" height="40" depth="10" color="#BCAAA4" shadow="cast: true;"></a-box><a-box class="win" position="5.01 0 0" rotation="0 90 0" width="8" height="38" depth="0.1" color="#4E342E"></a-box></a-entity>
     </a-entity>
     
-    <!-- CARS -->
+    <!-- ANIMATED CARS -->
     <a-entity id="cars">
-        <a-entity position="2 0.4 -15" rotation="0 90 0"><a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="red" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder></a-entity>
-        <a-entity position="-2 0.4 20" rotation="0 -90 0"><a-box position="0 0.3 0" width="1.8" height="0.6" depth="4.2" color="blue" shadow="cast: true"></a-box><a-box position="0 0.9 -0.2" width="1.6" height="0.6" depth="2.2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder></a-entity>
-        <a-entity position="15 0.4 2" rotation="0 0 0"><a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="yellow" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder></a-entity>
-        <a-entity position="-25 0.4 -2" rotation="0 180 0"><a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="green" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder></a-entity>
+        <!-- Northbound Cars -->
+        <a-entity id="car-n1" class="car collidable" position="2 0.4 -50" rotation="0 0 0" animation="property: position; from: 2 0.4 -50; to: 2 0.4 50; dur: 10000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="red" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+        <a-entity id="car-n2" class="car collidable" position="2 0.4 -65" rotation="0 0 0" animation="property: position; from: 2 0.4 -65; to: 2 0.4 35; dur: 10000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="#F57F17" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+
+        <!-- Southbound Cars -->
+        <a-entity id="car-s1" class="car collidable" position="-2 0.4 50" rotation="0 180 0" animation="property: position; from: -2 0.4 50; to: -2 0.4 -50; dur: 9000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4.2" color="blue" shadow="cast: true"></a-box><a-box position="0 0.9 -0.2" width="1.6" height="0.6" depth="2.2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+        <a-entity id="car-s2" class="car collidable" position="-2 0.4 70" rotation="0 180 0" animation="property: position; from: -2 0.4 70; to: -2 0.4 -30; dur: 10000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4.2" color="#4A148C" shadow="cast: true"></a-box><a-box position="0 0.9 -0.2" width="1.6" height="0.6" depth="2.2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.3" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+
+        <!-- Westbound Cars -->
+        <a-entity id="car-w1" class="car collidable" position="50 0.4 2" rotation="0 90 0" animation="property: position; from: 50 0.4 2; to: -50 0.4 2; dur: 11000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="yellow" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+        <a-entity id="car-w2" class="car collidable" position="65 0.4 2" rotation="0 90 0" animation="property: position; from: 65 0.4 2; to: -35 0.4 2; dur: 10000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="#FFFFFF" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+
+        <!-- Eastbound Cars -->
+        <a-entity id="car-e1" class="car collidable" position="-50 0.4 -2" rotation="0 -90 0" animation="property: position; from: -50 0.4 -2; to: 50 0.4 -2; dur: 9000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="green" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+        <a-entity id="car-e2" class="car collidable" position="-70 0.4 -2" rotation="0 -90 0" animation="property: position; from: -70 0.4 -2; to: 30 0.4 -2; dur: 10000; easing: linear; loop: true;" raycaster="objects: .collidable; far: 4; direction: 0 0 1;">
+            <a-box position="0 0.3 0" width="1.8" height="0.6" depth="4" color="#000000" shadow="cast: true"></a-box><a-box position="0 0.9 0" width="1.6" height="0.6" depth="2" color="#B3E5FC"></a-box><a-cylinder class="wheel" position="-1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 -1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="-1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder><a-cylinder class="wheel" position="1 0 1.2" radius="0.4" height="0.2" rotation="0 0 90" color="#212121"></a-cylinder>
+        </a-entity>
+    </a-entity>
+    
+    <!-- PEDESTRIANS -->
+    <a-entity id="pedestrians">
+        <!-- Pavement Walker 1 -->
+        <a-entity id="ped-1" class="pedestrian collidable" position="-7.5 0.2 -20" animation="property: position; to: -7.5 0.2 20; dur: 15000; dir: alternate; loop: true; easing: linear;" raycaster="objects: .car; far: 2; direction: 1 0 0;">
+            <a-sphere position="0 1.5 0" radius="0.2" color="#FFC107"></a-sphere>
+            <a-cylinder position="0 0.8 0" radius="0.25" height="1.2" color="#2196F3"></a-cylinder>
+        </a-entity>
+        <!-- Pavement Walker 2 -->
+        <a-entity id="ped-2" class="pedestrian collidable" position="7.5 0.2 25" animation="property: position; to: 7.5 0.2 -25; dur: 18000; dir: alternate; loop: true; easing: linear;" raycaster="objects: .car; far: 2; direction: -1 0 0;">
+            <a-sphere position="0 1.5 0" radius="0.2" color="#E91E63"></a-sphere>
+            <a-cylinder position="0 0.8 0" radius="0.25" height="1.2" color="#795548"></a-cylinder>
+        </a-entity>
+        <!-- Road Crosser -->
+        <a-entity id="crossing-ped" class="pedestrian collidable" position="-7.5 0.2 10" raycaster="objects: .car; far: 15; direction: 1 0 0;">
+            <a-sphere position="0 1.5 0" radius="0.2" color="#CDDC39"></a-sphere>
+            <a-cylinder position="0 0.8 0" radius="0.25" height="1.2" color="#673AB7"></a-cylinder>
+            <a-animation attribute="position" from="-7.5 0.2 10" to="7.5 0.2 10" dur="8000" easing="linear" startEvents="startcrossing"></a-animation>
+        </a-entity>
     </a-entity>
 
     <!-- GREENERY & STREET FURNITURE -->
     <a-entity id="scenery">
         <a-entity position="-7.5 0.2 -10"><a-cylinder position="0 1 0" radius="0.3" height="2" color="#795548" shadow="cast: true"></a-cylinder><a-sphere position="0 2.5 0" radius="1.5" color="#4CAF50" shadow="cast: true"></a-sphere></a-entity>
         <a-entity position="7.5 0.2 12"><a-cylinder position="0 1.5 0" radius="0.4" height="3" color="#795548" shadow="cast: true"></a-cylinder><a-sphere position="0 3.5 0" radius="2" color="#66BB6A" shadow="cast: true"></a-sphere></a-entity>
-        <a-entity position="-7.5 0.2 15"><a-cylinder position="0 2 0" radius="0.1" height="4" color="#455A64"></a-cylinder><a-box position="0 4 0.3" width="0.2" height="0.2" depth="0.8" color="#455A64"></a-box><a-sphere position="0 3.9 0.6" radius="0.2" color="#FFF59D" material="emissive: #FFF59D; emissiveIntensity: 2"></a-sphere></a-entity>
         <a-entity position="7.5 0.2 -25"><a-cylinder position="0 1 0" radius="0.3" height="2" color="#795548" shadow="cast: true"></a-cylinder><a-sphere position="0 2.5 0" radius="1.5" color="#81C784" shadow="cast: true"></a-sphere></a-entity>
+        <a-entity class="lamppost" position="-7.5 0.2 15" rotation="0 -90 0"><a-cylinder position="0 2 0" radius="0.1" height="4" color="#455A64"></a-cylinder><a-box position="0 4 -0.3" width="0.2" height="0.2" depth="0.8" color="#455A64"></a-box><a-sphere position="0 3.9 -0.6" radius="0.2" color="#FFF59D" material="emissive: #FFF59D; emissiveIntensity: 2"></a-sphere></a-entity>
+        <a-entity class="lamppost" position="7.5 0.2 -15" rotation="0 90 0"><a-cylinder position="0 2 0" radius="0.1" height="4" color="#455A64"></a-cylinder><a-box position="0 4 -0.3" width="0.2" height="0.2" depth="0.8" color="#455A64"></a-box><a-sphere position="0 3.9 -0.6" radius="0.2" color="#FFF59D" material="emissive: #FFF59D; emissiveIntensity: 2"></a-sphere></a-entity>
+        <a-entity class="lamppost" position="-7.5 0.2 30" rotation="0 -90 0"><a-cylinder position="0 2 0" radius="0.1" height="4" color="#455A64"></a-cylinder><a-box position="0 4 -0.3" width="0.2" height="0.2" depth="0.8" color="#455A64"></a-box><a-sphere position="0 3.9 -0.6" radius="0.2" color="#FFF59D" material="emissive: #FFF59D; emissiveIntensity: 2"></a-sphere></a-entity>
+        <a-entity class="lamppost" position="7.5 0.2 30" rotation="0 90 0"><a-cylinder position="0 2 0" radius="0.1" height="4" color="#455A64"></a-cylinder><a-box position="0 4 -0.3" width="0.2" height="0.2" depth="0.8" color="#455A64"></a-box><a-sphere position="0 3.9 -0.6" radius="0.2" color="#FFF59D" material="emissive: #FFF59D; emissiveIntensity: 2"></a-sphere></a-entity>
     </a-entity>
 
     <!-- PLAYER / CAMERA RIG -->
-    <a-entity id="player" position="0 1.6 18" movement-controls="speed: 0.25;" kinematic-body>
+    <a-entity id="player" class="collidable" position="0 1.6 18" movement-controls="speed: 0.25;" kinematic-body>
         <a-entity camera position="0 1.6 0" look-controls="pointerLockEnabled: true"></a-entity>
     </a-entity>
 
